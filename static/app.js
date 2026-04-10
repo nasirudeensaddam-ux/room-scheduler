@@ -41,6 +41,11 @@ const filterBookingRoomEl = document.getElementById("filter-booking-room");
 const myBookingsRoomEl = document.getElementById("my-bookings-room");
 const myBookingsRoomEmptyEl = document.getElementById("my-bookings-room-empty");
 
+/** @type {(() => void) | null} */
+let unsubMyBookingsAll = null;
+/** @type {(() => void) | null} */
+let unsubMyBookingsRoom = null;
+
 let currentUser = null;
 const roomNameSet = new Set();
 /** @type {{ id: string, name: string, normalizedName?: string, ownerUid?: string }[]} */
@@ -306,9 +311,11 @@ function renderBookingsList(listEl, emptyEl, bookings, { showRoomName }) {
       if (b.userUid && b.userUid !== currentUser.uid) {
         return;
       }
+      del.disabled = true;
       try {
         await deleteDoc(doc(db, "bookings", b.id));
       } catch (err) {
+        del.disabled = false;
         const code = err && err.code;
         if (code === "permission-denied") {
           alert("Permission denied. Check Firestore rules for booking delete.");
@@ -323,7 +330,21 @@ function renderBookingsList(listEl, emptyEl, bookings, { showRoomName }) {
   });
 }
 
-async function loadMyBookingsAll() {
+function teardownMyBookingsListeners() {
+  if (unsubMyBookingsAll) {
+    unsubMyBookingsAll();
+    unsubMyBookingsAll = null;
+  }
+  if (unsubMyBookingsRoom) {
+    unsubMyBookingsRoom();
+    unsubMyBookingsRoom = null;
+  }
+}
+
+/**
+ * Group 2 task 6: form shows all of the current user's bookings (live after first submit).
+ */
+function startMyBookingsAllListener() {
   if (!currentUser) {
     myBookingsAllEl.innerHTML = "";
     myBookingsAllEmptyEl.textContent = "Sign in to see your bookings.";
@@ -331,18 +352,39 @@ async function loadMyBookingsAll() {
     return;
   }
 
+  if (unsubMyBookingsAll) {
+    unsubMyBookingsAll();
+    unsubMyBookingsAll = null;
+  }
+
   const q = query(
     collection(db, "bookings"),
     where("userUid", "==", currentUser.uid)
   );
-  const snapshot = await getDocs(q);
-  const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-  renderBookingsList(myBookingsAllEl, myBookingsAllEmptyEl, items, {
-    showRoomName: true,
-  });
+
+  unsubMyBookingsAll = onSnapshot(
+    q,
+    (snapshot) => {
+      const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      renderBookingsList(myBookingsAllEl, myBookingsAllEmptyEl, items, {
+        showRoomName: true,
+      });
+    },
+    (error) => {
+      myBookingsAllEl.innerHTML = "";
+      myBookingsAllEmptyEl.textContent = firestoreErrorMessage(
+        error,
+        "Could not load bookings."
+      );
+      myBookingsAllEmptyEl.style.display = "block";
+    }
+  );
 }
 
-async function loadMyBookingsForRoom(roomId) {
+/**
+ * Group 2 task 7: form shows current user's bookings for one room (live after submit).
+ */
+function startMyBookingsRoomListener(roomId) {
   if (!currentUser) {
     myBookingsRoomEl.innerHTML = "";
     myBookingsRoomEmptyEl.textContent = "Sign in to see your bookings.";
@@ -350,16 +392,34 @@ async function loadMyBookingsForRoom(roomId) {
     return;
   }
 
+  if (unsubMyBookingsRoom) {
+    unsubMyBookingsRoom();
+    unsubMyBookingsRoom = null;
+  }
+
   const q = query(
     collection(db, "bookings"),
     where("userUid", "==", currentUser.uid),
     where("roomId", "==", roomId)
   );
-  const snapshot = await getDocs(q);
-  const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-  renderBookingsList(myBookingsRoomEl, myBookingsRoomEmptyEl, items, {
-    showRoomName: false,
-  });
+
+  unsubMyBookingsRoom = onSnapshot(
+    q,
+    (snapshot) => {
+      const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      renderBookingsList(myBookingsRoomEl, myBookingsRoomEmptyEl, items, {
+        showRoomName: false,
+      });
+    },
+    (error) => {
+      myBookingsRoomEl.innerHTML = "";
+      myBookingsRoomEmptyEl.textContent = firestoreErrorMessage(
+        error,
+        "Could not load bookings."
+      );
+      myBookingsRoomEmptyEl.style.display = "block";
+    }
+  );
 }
 
 function setBookingFormDisabled(disabled) {
@@ -430,21 +490,12 @@ bookingFormEl.addEventListener("submit", async (event) => {
   }
 });
 
-allBookingsFormEl.addEventListener("submit", async (event) => {
+allBookingsFormEl.addEventListener("submit", (event) => {
   event.preventDefault();
-  try {
-    await loadMyBookingsAll();
-  } catch (error) {
-    myBookingsAllEmptyEl.textContent = firestoreErrorMessage(
-      error,
-      "Could not load bookings."
-    );
-    myBookingsAllEmptyEl.style.display = "block";
-    myBookingsAllEl.innerHTML = "";
-  }
+  startMyBookingsAllListener();
 });
 
-roomBookingsFormEl.addEventListener("submit", async (event) => {
+roomBookingsFormEl.addEventListener("submit", (event) => {
   event.preventDefault();
   const roomId = filterBookingRoomEl.value.trim();
   if (!roomId) {
@@ -453,16 +504,7 @@ roomBookingsFormEl.addEventListener("submit", async (event) => {
     myBookingsRoomEl.innerHTML = "";
     return;
   }
-  try {
-    await loadMyBookingsForRoom(roomId);
-  } catch (error) {
-    myBookingsRoomEmptyEl.textContent = firestoreErrorMessage(
-      error,
-      "Could not load bookings."
-    );
-    myBookingsRoomEmptyEl.style.display = "block";
-    myBookingsRoomEl.innerHTML = "";
-  }
+  startMyBookingsRoomListener(roomId);
 });
 
 handleAuthState((user) => {
@@ -474,6 +516,7 @@ handleAuthState((user) => {
     authStatusEl.textContent = `Logged in as ${currentUser.email || currentUser.uid}`;
   } else {
     authStatusEl.textContent = "You are logged out.";
+    teardownMyBookingsListeners();
     myBookingsAllEl.innerHTML = "";
     myBookingsRoomEl.innerHTML = "";
     myBookingsAllEmptyEl.textContent = "Sign in to see your bookings.";

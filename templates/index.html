@@ -57,11 +57,11 @@
       <section class="panel">
         <h2>My bookings (all rooms)</h2>
         <form id="all-bookings-form" class="inline-form">
-          <button type="submit">Show / refresh my bookings</button>
+          <button type="submit">Show my bookings (live updates)</button>
         </form>
         <ul id="my-bookings-all" class="bookings-list"></ul>
         <p id="my-bookings-all-empty" class="status-text muted">
-          No bookings listed yet. Sign in and use the button above.
+          Sign in, then submit the form above. The list stays in sync when you add or delete bookings.
         </p>
       </section>
 
@@ -72,11 +72,11 @@
           <select id="filter-booking-room" name="roomId" required>
             <option value="">Select a room</option>
           </select>
-          <button type="submit">Show bookings for this room</button>
+          <button type="submit">Show my bookings for this room (live)</button>
         </form>
         <ul id="my-bookings-room" class="bookings-list"></ul>
         <p id="my-bookings-room-empty" class="status-text muted">
-          Choose a room and submit the form to see your bookings there.
+          Pick a room and submit; the list updates live, including after Delete.
         </p>
       </section>
     </main>
