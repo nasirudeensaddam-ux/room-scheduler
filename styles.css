@@ -1,0 +1,78 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f7f7f8;
+  color: #111827;
+}
+
+.app {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.panel {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+  border: 1px solid #e5e7eb;
+}
+
+form {
+  display: grid;
+  gap: 8px;
+  max-width: 420px;
+}
+
+input,
+button {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+}
+
+button {
+  cursor: pointer;
+}
+
+.error-text {
+  color: #b91c1c;
+  min-height: 20px;
+}
+
+.success-text {
+  color: #15803d;
+  min-height: 20px;
+}
+
+.status-text {
+  color: #374151;
+}
+
+.rooms-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.rooms-list li {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fff;
+  overflow-wrap: anywhere;
+}

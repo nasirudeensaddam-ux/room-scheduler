@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Room Scheduler - Group 1</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="app-header">
+        <h1>Room Scheduler</h1>
+        <div id="auth-controls" class="auth-controls"></div>
+      </header>
+
+      <section class="panel">
+        <h2>Authentication</h2>
+        <p id="auth-status" class="status-text">Checking session...</p>
+      </section>
+
+      <section class="panel">
+        <h2>Add Room</h2>
+        <form id="room-form" novalidate>
+          <label for="room-name">Room name</label>
+          <input id="room-name" name="roomName" type="text" maxlength="120" />
+          <button id="room-submit" type="submit">Add Room</button>
+          <p id="room-error" class="error-text" aria-live="polite"></p>
+          <p id="room-success" class="success-text" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>Rooms</h2>
+        <ul id="rooms-list" class="rooms-list"></ul>
+        <p id="rooms-empty" class="status-text">No rooms available yet.</p>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
