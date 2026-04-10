@@ -2,6 +2,8 @@ import {
   Timestamp,
   addDoc,
   collection,
+  deleteDoc,
+  doc,
   getDocs,
   limit,
   onSnapshot,
@@ -22,8 +24,27 @@ const roomSuccessEl = document.getElementById("room-success");
 const roomsListEl = document.getElementById("rooms-list");
 const roomsEmptyEl = document.getElementById("rooms-empty");
 
+const bookingFormEl = document.getElementById("booking-form");
+const bookingRoomEl = document.getElementById("booking-room");
+const bookingDateEl = document.getElementById("booking-date");
+const bookingStartEl = document.getElementById("booking-start");
+const bookingEndEl = document.getElementById("booking-end");
+const bookingErrorEl = document.getElementById("booking-error");
+const bookingSuccessEl = document.getElementById("booking-success");
+
+const allBookingsFormEl = document.getElementById("all-bookings-form");
+const myBookingsAllEl = document.getElementById("my-bookings-all");
+const myBookingsAllEmptyEl = document.getElementById("my-bookings-all-empty");
+
+const roomBookingsFormEl = document.getElementById("room-bookings-form");
+const filterBookingRoomEl = document.getElementById("filter-booking-room");
+const myBookingsRoomEl = document.getElementById("my-bookings-room");
+const myBookingsRoomEmptyEl = document.getElementById("my-bookings-room-empty");
+
 let currentUser = null;
 const roomNameSet = new Set();
+/** @type {{ id: string, name: string, normalizedName?: string, ownerUid?: string }[]} */
+let cachedRooms = [];
 
 function normalizeRoomName(roomName) {
   return roomName.trim().toLowerCase();
@@ -70,9 +91,37 @@ function renderAuthControls() {
   authControlsEl.append(button);
 }
 
+function populateRoomSelects(rooms) {
+  const previousBookingRoom = bookingRoomEl.value;
+  const previousFilterRoom = filterBookingRoomEl.value;
+
+  bookingRoomEl.innerHTML = '<option value="">Select a room</option>';
+  filterBookingRoomEl.innerHTML = '<option value="">Select a room</option>';
+
+  rooms.forEach((r) => {
+    const opt1 = document.createElement("option");
+    opt1.value = r.id;
+    opt1.textContent = r.name;
+    bookingRoomEl.append(opt1);
+
+    const opt2 = document.createElement("option");
+    opt2.value = r.id;
+    opt2.textContent = r.name;
+    filterBookingRoomEl.append(opt2);
+  });
+
+  if (rooms.some((r) => r.id === previousBookingRoom)) {
+    bookingRoomEl.value = previousBookingRoom;
+  }
+  if (rooms.some((r) => r.id === previousFilterRoom)) {
+    filterBookingRoomEl.value = previousFilterRoom;
+  }
+}
+
 function renderRooms(rooms) {
   roomsListEl.innerHTML = "";
   roomNameSet.clear();
+  cachedRooms = rooms;
 
   rooms.forEach((room) => {
     roomNameSet.add(normalizeRoomName(room.name));
@@ -83,6 +132,33 @@ function renderRooms(rooms) {
   });
 
   roomsEmptyEl.style.display = rooms.length === 0 ? "block" : "none";
+  populateRoomSelects(rooms);
+}
+
+function roomNameById(roomId) {
+  const found = cachedRooms.find((r) => r.id === roomId);
+  return found ? found.name : roomId;
+}
+
+function parseTimeToMinutes(timeValue) {
+  if (!timeValue || typeof timeValue !== "string") {
+    return null;
+  }
+  const parts = timeValue.trim().split(":");
+  if (parts.length < 2) {
+    return null;
+  }
+  const hours = Number(parts[0]);
+  const minutes = Number(parts[1]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+  return hours * 60 + minutes;
+}
+
+
+function intervalsOverlapHalfOpen(startA, endA, startB, endB) {
+  return startA < endB && startB < endA;
 }
 
 async function createRoom(roomName) {
@@ -133,10 +209,45 @@ async function getOrCreateDay(roomId, dateIso) {
   return createdDay.id;
 }
 
+async function fetchBookingsForRoomAndDay(roomId, dateIso) {
+  const bookingsQuery = query(
+    collection(db, "bookings"),
+    where("roomId", "==", roomId),
+    where("dateIso", "==", dateIso)
+  );
+  const snapshot = await getDocs(bookingsQuery);
+  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+async function assertNoBookingClash(roomId, dateIso, startTime, endTime) {
+  const startM = parseTimeToMinutes(startTime);
+  const endM = parseTimeToMinutes(endTime);
+  if (startM === null || endM === null) {
+    throw new Error("Start and end times must be valid.");
+  }
+  if (endM <= startM) {
+    throw new Error("End time must be after start time.");
+  }
+
+  const existing = await fetchBookingsForRoomAndDay(roomId, dateIso);
+  for (const b of existing) {
+    const bStart = parseTimeToMinutes(String(b.startTime ?? ""));
+    const bEnd = parseTimeToMinutes(String(b.endTime ?? ""));
+    if (bStart === null || bEnd === null) {
+      continue;
+    }
+    if (intervalsOverlapHalfOpen(startM, endM, bStart, bEnd)) {
+      throw new Error("This time overlaps an existing booking for that room.");
+    }
+  }
+}
+
 async function createBooking({ roomId, dateIso, startTime, endTime }) {
   if (!currentUser) {
     throw new Error("You must be logged in to create a booking.");
   }
+
+  await assertNoBookingClash(roomId, dateIso, startTime, endTime);
 
   const dayId = await getOrCreateDay(roomId, dateIso);
 
@@ -151,6 +262,118 @@ async function createBooking({ roomId, dateIso, startTime, endTime }) {
   });
 
   return bookingRef.id;
+}
+
+function sortBookingsForDisplay(bookings) {
+  return [...bookings].sort((a, b) => {
+    const dateCmp = String(a.dateIso ?? "").localeCompare(String(b.dateIso ?? ""));
+    if (dateCmp !== 0) {
+      return dateCmp;
+    }
+    return String(a.startTime ?? "").localeCompare(String(b.startTime ?? ""));
+  });
+}
+
+function formatBookingLine(b) {
+  const room = roomNameById(b.roomId);
+  return `${b.dateIso ?? "?"} · ${room} · ${b.startTime ?? "?"}–${b.endTime ?? "?"}`;
+}
+
+function renderBookingsList(listEl, emptyEl, bookings, { showRoomName }) {
+  listEl.innerHTML = "";
+  if (bookings.length === 0) {
+    emptyEl.style.display = "block";
+    return;
+  }
+  emptyEl.style.display = "none";
+
+  sortBookingsForDisplay(bookings).forEach((b) => {
+    const li = document.createElement("li");
+    const meta = document.createElement("div");
+    meta.className = "booking-meta";
+    meta.textContent = showRoomName
+      ? formatBookingLine(b)
+      : `${b.dateIso ?? "?"} · ${b.startTime ?? "?"}–${b.endTime ?? "?"}`;
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "delete-booking";
+    del.textContent = "Delete";
+    del.addEventListener("click", async () => {
+      if (!currentUser) {
+        return;
+      }
+      if (b.userUid && b.userUid !== currentUser.uid) {
+        return;
+      }
+      try {
+        await deleteDoc(doc(db, "bookings", b.id));
+      } catch (err) {
+        const code = err && err.code;
+        if (code === "permission-denied") {
+          alert("Permission denied. Check Firestore rules for booking delete.");
+        } else {
+          alert(err.message || "Could not delete booking.");
+        }
+      }
+    });
+
+    li.append(meta, del);
+    listEl.append(li);
+  });
+}
+
+async function loadMyBookingsAll() {
+  if (!currentUser) {
+    myBookingsAllEl.innerHTML = "";
+    myBookingsAllEmptyEl.textContent = "Sign in to see your bookings.";
+    myBookingsAllEmptyEl.style.display = "block";
+    return;
+  }
+
+  const q = query(
+    collection(db, "bookings"),
+    where("userUid", "==", currentUser.uid)
+  );
+  const snapshot = await getDocs(q);
+  const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  renderBookingsList(myBookingsAllEl, myBookingsAllEmptyEl, items, {
+    showRoomName: true,
+  });
+}
+
+async function loadMyBookingsForRoom(roomId) {
+  if (!currentUser) {
+    myBookingsRoomEl.innerHTML = "";
+    myBookingsRoomEmptyEl.textContent = "Sign in to see your bookings.";
+    myBookingsRoomEmptyEl.style.display = "block";
+    return;
+  }
+
+  const q = query(
+    collection(db, "bookings"),
+    where("userUid", "==", currentUser.uid),
+    where("roomId", "==", roomId)
+  );
+  const snapshot = await getDocs(q);
+  const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  renderBookingsList(myBookingsRoomEl, myBookingsRoomEmptyEl, items, {
+    showRoomName: false,
+  });
+}
+
+function setBookingFormDisabled(disabled) {
+  Array.from(bookingFormEl.elements).forEach((el) => {
+    el.disabled = disabled;
+  });
+}
+
+function firestoreErrorMessage(error, fallback) {
+  const code = error && error.code;
+  if (code === "permission-denied") {
+    return "Permission denied. Publish Firestore rules (see firestore.rules) and sign in.";
+  }
+  return error.message || fallback;
 }
 
 roomFormEl.addEventListener("submit", async (event) => {
@@ -171,18 +394,93 @@ roomFormEl.addEventListener("submit", async (event) => {
     roomNameEl.value = "";
     roomSuccessEl.textContent = "Room created successfully.";
   } catch (error) {
-    roomErrorEl.textContent = error.message || "Unable to create room.";
+    roomErrorEl.textContent = firestoreErrorMessage(error, "Unable to create room.");
+  }
+});
+
+bookingFormEl.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  bookingErrorEl.textContent = "";
+  bookingSuccessEl.textContent = "";
+
+  if (!currentUser) {
+    bookingErrorEl.textContent = "You must be logged in to book.";
+    return;
+  }
+
+  const roomId = bookingRoomEl.value.trim();
+  const dateIso = bookingDateEl.value;
+  const startTime = bookingStartEl.value;
+  const endTime = bookingEndEl.value;
+
+  if (!roomId) {
+    bookingErrorEl.textContent = "Select a room.";
+    return;
+  }
+  if (!dateIso) {
+    bookingErrorEl.textContent = "Select a day.";
+    return;
+  }
+
+  try {
+    await createBooking({ roomId, dateIso, startTime, endTime });
+    bookingSuccessEl.textContent = "Booking created.";
+  } catch (error) {
+    bookingErrorEl.textContent = firestoreErrorMessage(error, "Unable to create booking.");
+  }
+});
+
+allBookingsFormEl.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await loadMyBookingsAll();
+  } catch (error) {
+    myBookingsAllEmptyEl.textContent = firestoreErrorMessage(
+      error,
+      "Could not load bookings."
+    );
+    myBookingsAllEmptyEl.style.display = "block";
+    myBookingsAllEl.innerHTML = "";
+  }
+});
+
+roomBookingsFormEl.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const roomId = filterBookingRoomEl.value.trim();
+  if (!roomId) {
+    myBookingsRoomEmptyEl.textContent = "Select a room.";
+    myBookingsRoomEmptyEl.style.display = "block";
+    myBookingsRoomEl.innerHTML = "";
+    return;
+  }
+  try {
+    await loadMyBookingsForRoom(roomId);
+  } catch (error) {
+    myBookingsRoomEmptyEl.textContent = firestoreErrorMessage(
+      error,
+      "Could not load bookings."
+    );
+    myBookingsRoomEmptyEl.style.display = "block";
+    myBookingsRoomEl.innerHTML = "";
   }
 });
 
 handleAuthState((user) => {
   currentUser = user;
   renderAuthControls();
+  setBookingFormDisabled(!user);
 
   if (currentUser) {
     authStatusEl.textContent = `Logged in as ${currentUser.email || currentUser.uid}`;
   } else {
     authStatusEl.textContent = "You are logged out.";
+    myBookingsAllEl.innerHTML = "";
+    myBookingsRoomEl.innerHTML = "";
+    myBookingsAllEmptyEl.textContent = "Sign in to see your bookings.";
+    myBookingsAllEmptyEl.style.display = "block";
+    myBookingsRoomEmptyEl.textContent =
+      "Choose a room and submit the form to see your bookings there.";
+    myBookingsRoomEmptyEl.style.display = "block";
   }
 });
 
@@ -201,6 +499,15 @@ onSnapshot(roomsQuery, (snapshot) => {
 
   renderRooms(rooms);
 });
+
+function localIsoDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+bookingDateEl.min = localIsoDate(new Date());
 
 window.group1Debug = {
   createBooking,

@@ -76,3 +76,42 @@ button {
   background: #fff;
   overflow-wrap: anywhere;
 }
+
+.inline-form {
+  max-width: none;
+  margin-bottom: 12px;
+}
+
+.bookings-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  gap: 8px;
+}
+
+.bookings-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+
+.bookings-list .booking-meta {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.bookings-list button.delete-booking {
+  flex-shrink: 0;
+}
+
+.muted {
+  color: #6b7280;
+}

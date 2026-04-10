@@ -34,6 +34,51 @@
         <ul id="rooms-list" class="rooms-list"></ul>
         <p id="rooms-empty" class="status-text">No rooms available yet.</p>
       </section>
+
+      <section class="panel">
+        <h2>Book a room</h2>
+        <form id="booking-form" novalidate>
+          <label for="booking-room">Room</label>
+          <select id="booking-room" name="roomId" required>
+            <option value="">Select a room</option>
+          </select>
+          <label for="booking-date">Day</label>
+          <input id="booking-date" name="date" type="date" required />
+          <label for="booking-start">Start time</label>
+          <input id="booking-start" name="start" type="time" required />
+          <label for="booking-end">End time</label>
+          <input id="booking-end" name="end" type="time" required />
+          <button type="submit">Book</button>
+          <p id="booking-error" class="error-text" aria-live="polite"></p>
+          <p id="booking-success" class="success-text" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>My bookings (all rooms)</h2>
+        <form id="all-bookings-form" class="inline-form">
+          <button type="submit">Show / refresh my bookings</button>
+        </form>
+        <ul id="my-bookings-all" class="bookings-list"></ul>
+        <p id="my-bookings-all-empty" class="status-text muted">
+          No bookings listed yet. Sign in and use the button above.
+        </p>
+      </section>
+
+      <section class="panel">
+        <h2>My bookings (one room)</h2>
+        <form id="room-bookings-form" novalidate>
+          <label for="filter-booking-room">Room</label>
+          <select id="filter-booking-room" name="roomId" required>
+            <option value="">Select a room</option>
+          </select>
+          <button type="submit">Show bookings for this room</button>
+        </form>
+        <ul id="my-bookings-room" class="bookings-list"></ul>
+        <p id="my-bookings-room-empty" class="status-text muted">
+          Choose a room and submit the form to see your bookings there.
+        </p>
+      </section>
     </main>
 
     <script type="module" src="/static/app.js"></script>
