@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content="{{ csrf_token }}" />
+    <title>Edit booking</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="app-header">
+        <h1>Edit booking</h1>
+        <p class="status-text"><a href="{{ url_for('index') }}">← Back to home</a></p>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <ul class="flash-list">
+        {% for category, message in messages %}
+        <li class="flash flash-{{ category }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% endwith %}
+
+      <section class="panel">
+        <form method="post" action="{{ url_for('booking_update', booking_id=booking.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <label for="edit-room">Room</label>
+          <select id="edit-room" name="room_id" required>
+            {% for room in rooms %}
+            <option
+              value="{{ room.id }}"
+              {% if room.id == booking.roomId %}selected{% endif %}
+            >
+              {{ room.name }}
+            </option>
+            {% endfor %}
+          </select>
+          <label for="edit-date">Day</label>
+          <input
+            id="edit-date"
+            name="date"
+            type="date"
+            value="{{ booking.dateIso }}"
+            required
+          />
+          <label for="edit-start">Start time</label>
+          <input
+            id="edit-start"
+            name="start_time"
+            type="time"
+            value="{{ start_val }}"
+            required
+          />
+          <label for="edit-end">End time</label>
+          <input
+            id="edit-end"
+            name="end_time"
+            type="time"
+            value="{{ end_val }}"
+            required
+          />
+          <button type="submit">Save changes</button>
+        </form>
+      </section>
+    </main>
+
+    <script type="module" src="{{ url_for('static', filename='auth-bridge.js') }}"></script>
+  </body>
+</html>

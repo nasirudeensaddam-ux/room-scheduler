@@ -69,12 +69,30 @@ button {
   gap: 8px;
 }
 
-.rooms-list li {
+.rooms-list li,
+.rooms-list li.room-row {
   border: 1px solid #e5e7eb;
   border-radius: 6px;
   padding: 10px 12px;
   background: #fff;
   overflow-wrap: anywhere;
+}
+
+.room-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.room-row .room-name {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+button.delete-room {
+  flex-shrink: 0;
 }
 
 .inline-form {
@@ -108,10 +126,105 @@ button {
   min-width: 0;
 }
 
+.bookings-list .booking-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.bookings-list a.edit-booking {
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  color: #111827;
+  text-decoration: none;
+  font-size: inherit;
+  font-family: inherit;
+}
+
+.bookings-list a.edit-booking:hover {
+  background: #f3f4f6;
+}
+
 .bookings-list button.delete-booking {
   flex-shrink: 0;
 }
 
 .muted {
   color: #6b7280;
+}
+
+.auth-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+a.button-link {
+  display: inline-block;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #111827;
+  text-decoration: none;
+  font-size: inherit;
+  font-family: inherit;
+}
+
+a.button-link:hover {
+  background: #f3f4f6;
+}
+
+button.button-as-button {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #111827;
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button.button-as-button:hover {
+  background: #f3f4f6;
+}
+
+.flash-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+}
+
+.flash {
+  padding: 10px 12px;
+  border-radius: 6px;
+  margin-top: 8px;
+}
+
+.flash-success {
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  color: #065f46;
+}
+
+.flash-error {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+
+form.inline-delete-form {
+  display: inline;
+  margin: 0;
+}
+
+form.inline-delete-form button {
+  margin: 0;
 }

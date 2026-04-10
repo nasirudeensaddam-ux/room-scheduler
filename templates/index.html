@@ -3,84 +3,204 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content="{{ csrf_token }}" />
     <title>Room Scheduler</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
   <body>
     <main class="app">
       <header class="app-header">
         <h1>Room Scheduler</h1>
-        <div id="auth-controls" class="auth-controls"></div>
+        <div class="auth-controls">
+          {% if user_uid %}
+          <span class="status-text">{{ user_email or user_uid }}</span>
+          <button type="button" id="firebase-logout-btn" class="button-as-button">
+            Logout
+          </button>
+          {% else %}
+          <button type="button" id="firebase-login-btn" class="button-as-button">
+            Login with Google
+          </button>
+          {% endif %}
+        </div>
       </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <ul class="flash-list">
+        {% for category, message in messages %}
+        <li class="flash flash-{{ category }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% endwith %}
 
       <section class="panel">
         <h2>Authentication</h2>
-        <p id="auth-status" class="status-text">Checking session...</p>
+        <p class="status-text">
+          {% if user_uid %}Signed in.{% else %}Sign in to add rooms and bookings.{% endif %}
+        </p>
       </section>
 
+      {% if user_uid %}
       <section class="panel">
         <h2>Add Room</h2>
-        <form id="room-form" novalidate>
+        <form method="post" action="{{ url_for('room_create') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <label for="room-name">Room name</label>
-          <input id="room-name" name="roomName" type="text" maxlength="120" />
-          <button id="room-submit" type="submit">Add Room</button>
-          <p id="room-error" class="error-text" aria-live="polite"></p>
-          <p id="room-success" class="success-text" aria-live="polite"></p>
+          <input
+            id="room-name"
+            name="room_name"
+            type="text"
+            maxlength="120"
+            required
+          />
+          <button type="submit">Add Room</button>
         </form>
       </section>
+      {% endif %}
 
       <section class="panel">
         <h2>Rooms</h2>
-        <ul id="rooms-list" class="rooms-list"></ul>
-        <p id="rooms-empty" class="status-text">No rooms available yet.</p>
+        {% if rooms %}
+        <ul class="rooms-list">
+          {% for room in rooms %}
+          <li class="room-row">
+            <span class="room-name">{{ room.name }}</span>
+            {% if user_uid and room.ownerUid == user_uid %}
+            <form
+              method="post"
+              action="{{ url_for('room_delete', room_id=room.id) }}"
+              class="inline-delete-form"
+            >
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <button type="submit" class="delete-room">Delete room</button>
+            </form>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="status-text">No rooms available yet.</p>
+        {% endif %}
       </section>
 
+      {% if user_uid %}
       <section class="panel">
         <h2>Book a room</h2>
-        <form id="booking-form" novalidate>
+        <form method="post" action="{{ url_for('booking_create') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <label for="booking-room">Room</label>
-          <select id="booking-room" name="roomId" required>
+          <select id="booking-room" name="room_id" required>
             <option value="">Select a room</option>
+            {% for room in rooms %}
+            <option value="{{ room.id }}">{{ room.name }}</option>
+            {% endfor %}
           </select>
           <label for="booking-date">Day</label>
-          <input id="booking-date" name="date" type="date" required />
+          <input
+            id="booking-date"
+            name="date"
+            type="date"
+            min="{{ today_iso }}"
+            required
+          />
           <label for="booking-start">Start time</label>
-          <input id="booking-start" name="start" type="time" required />
+          <input id="booking-start" name="start_time" type="time" required />
           <label for="booking-end">End time</label>
-          <input id="booking-end" name="end" type="time" required />
+          <input id="booking-end" name="end_time" type="time" required />
           <button type="submit">Book</button>
-          <p id="booking-error" class="error-text" aria-live="polite"></p>
-          <p id="booking-success" class="success-text" aria-live="polite"></p>
         </form>
       </section>
 
       <section class="panel">
         <h2>My bookings (all rooms)</h2>
-        <form id="all-bookings-form" class="inline-form">
-          <button type="submit">Show my bookings (live updates)</button>
+        <form method="get" action="{{ url_for('index') }}" class="inline-form">
+          <input type="hidden" name="show" value="mine" />
+          <button type="submit">Show all my bookings</button>
         </form>
-        <ul id="my-bookings-all" class="bookings-list"></ul>
-        <p id="my-bookings-all-empty" class="status-text muted">
-          Sign in, then submit the form above. The list stays in sync when you add or delete bookings.
-        </p>
+        {% if my_bookings is not none %}
+        {% if my_bookings %}
+        <ul class="bookings-list">
+          {% for b in my_bookings %}
+          <li>
+            <div class="booking-meta">
+              {{ b.dateIso }} · {{ rooms|room_name(b.roomId) }} · {{ b.startTime }}–{{ b.endTime }}
+            </div>
+            <div class="booking-actions">
+              <a
+                class="edit-booking"
+                href="{{ url_for('booking_edit', booking_id=b.id) }}"
+                >Edit</a
+              >
+              <form
+                method="post"
+                action="{{ url_for('booking_delete', booking_id=b.id) }}"
+                class="inline-delete-form"
+              >
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <button type="submit" class="delete-booking">Delete</button>
+              </form>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="status-text muted">You have no bookings.</p>
+        {% endif %}
+        {% else %}
+        <p class="status-text muted">Use the button above to load your bookings.</p>
+        {% endif %}
       </section>
 
       <section class="panel">
         <h2>My bookings (one room)</h2>
-        <form id="room-bookings-form" novalidate>
-          <label for="filter-booking-room">Room</label>
-          <select id="filter-booking-room" name="roomId" required>
+        <form method="get" action="{{ url_for('index') }}">
+          <label for="filter-room">Room</label>
+          <select id="filter-room" name="room_filter" required>
             <option value="">Select a room</option>
+            {% for room in rooms %}
+            <option value="{{ room.id }}" {% if room.id == room_filter %}selected{% endif %}>
+              {{ room.name }}
+            </option>
+            {% endfor %}
           </select>
-          <button type="submit">Show my bookings for this room (live)</button>
+          <button type="submit">Show my bookings for this room</button>
         </form>
-        <ul id="my-bookings-room" class="bookings-list"></ul>
-        <p id="my-bookings-room-empty" class="status-text muted">
-          Pick a room and submit; the list updates live, including after Delete.
-        </p>
+        {% if room_filter %}
+        {% if my_room_bookings %}
+        <ul class="bookings-list">
+          {% for b in my_room_bookings %}
+          <li>
+            <div class="booking-meta">
+              {{ b.dateIso }} · {{ b.startTime }}–{{ b.endTime }}
+            </div>
+            <div class="booking-actions">
+              <a
+                class="edit-booking"
+                href="{{ url_for('booking_edit', booking_id=b.id) }}"
+                >Edit</a
+              >
+              <form
+                method="post"
+                action="{{ url_for('booking_delete', booking_id=b.id) }}"
+                class="inline-delete-form"
+              >
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <button type="submit" class="delete-booking">Delete</button>
+              </form>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="status-text muted">No bookings for you in this room.</p>
+        {% endif %}
+        {% endif %}
       </section>
+      {% endif %}
     </main>
 
-    <script type="module" src="/static/app.js"></script>
+    <script type="module" src="{{ url_for('static', filename='auth-bridge.js') }}"></script>
   </body>
 </html>
