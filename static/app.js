@@ -1,5 +1,15 @@
-import { Timestamp, addDoc, collection, doc, getDocs, limit, onSnapshot, query, serverTimestamp, where } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-import { db, handleAuthState, login, logout } from "./firebase-login.js";
+import {
+  Timestamp,
+  addDoc,
+  collection,
+  getDocs,
+  limit,
+  onSnapshot,
+  query,
+  serverTimestamp,
+  where,
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { db, handleAuthState, login, logout } from "/static/firebase-login.js";
 
 const MAX_ROOM_NAME_LENGTH = 120;
 
@@ -196,7 +206,6 @@ window.group1Debug = {
   createBooking,
   createRoom,
   getOrCreateDay,
-  // This helper avoids needing Firestore Date transforms when testing.
   toTimestamp(dateString) {
     return Timestamp.fromDate(new Date(dateString));
   },

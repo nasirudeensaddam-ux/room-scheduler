@@ -8,6 +8,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
+const FIRESTORE_DATABASE_NAME = "a1-0000000";
+
 const firebaseConfig = {
   apiKey: "AIzaSyBPcaCJaH9k5kdzYmUsHLdZ3X7UaNUyOZk",
   authDomain: "room-scheduler-227ec.firebaseapp.com",
@@ -19,10 +21,9 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
-const db = getFirestore(app, "A1-XXXXXXX");
+const db = getFirestore(app, FIRESTORE_DATABASE_NAME);
 
 async function login() {
   await signInWithPopup(auth, provider);
