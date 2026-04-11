@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import datetime
 from typing import Any
 
 from google.cloud.firestore import SERVER_TIMESTAMP
 
 MAX_ROOM_NAME_LENGTH = 120
+
+
+OCCUPANCY_WINDOW_START_MIN = 9 * 60
+OCCUPANCY_WINDOW_END_MIN = 18 * 60
+OCCUPANCY_WINDOW_SPAN_MIN = OCCUPANCY_WINDOW_END_MIN - OCCUPANCY_WINDOW_START_MIN
 
 
 def parse_time_to_minutes(time_value: str | None) -> int | None:
@@ -253,3 +259,104 @@ def normalize_time_for_input(value: str | None) -> str:
     if len(parts) < 2:
         return ""
     return f"{parts[0].zfill(2)}:{parts[1].zfill(2)}"
+
+
+def get_room(db: Any, room_id: str) -> dict[str, Any] | None:
+    snap = db.collection("rooms").document(room_id).get()
+    if not snap.exists:
+        return None
+    return {"id": snap.id, **(snap.to_dict() or {})}
+
+
+def list_bookings_on_date_all_rooms(db: Any, date_iso: str) -> list[dict[str, Any]]:
+    q = db.collection("bookings").where("dateIso", "==", date_iso)
+    return [{"id": s.id, **(s.to_dict() or {})} for s in q.stream()]
+
+
+def sort_day_bookings_for_display(
+    bookings: list[dict[str, Any]], rooms: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    return sorted(
+        bookings,
+        key=lambda b: (
+            room_name_by_id(rooms, str(b.get("roomId") or "")),
+            str(b.get("startTime") or ""),
+        ),
+    )
+
+
+def list_all_bookings_for_room(db: Any, room_id: str) -> list[dict[str, Any]]:
+    q = db.collection("bookings").where("roomId", "==", room_id)
+    items = [{"id": s.id, **(s.to_dict() or {})} for s in q.stream()]
+    items.sort(
+        key=lambda b: (
+            str(b.get("dateIso") or ""),
+            str(b.get("startTime") or ""),
+        )
+    )
+    return items
+
+
+def _merged_minutes_in_window(
+    bookings: list[dict[str, Any]],
+    date_iso: str,
+    win_lo: int,
+    win_hi: int,
+) -> int:
+    intervals: list[tuple[int, int]] = []
+    for b in bookings:
+        if str(b.get("dateIso") or "") != date_iso:
+            continue
+        s = parse_time_to_minutes(str(b.get("startTime") or ""))
+        e = parse_time_to_minutes(str(b.get("endTime") or ""))
+        if s is None or e is None or e <= s:
+            continue
+        lo = max(s, win_lo)
+        hi = min(e, win_hi)
+        if hi > lo:
+            intervals.append((lo, hi))
+    if not intervals:
+        return 0
+    intervals.sort()
+    total = 0
+    cur_lo, cur_hi = intervals[0]
+    for lo, hi in intervals[1:]:
+        if lo < cur_hi:
+            cur_hi = max(cur_hi, hi)
+        else:
+            total += cur_hi - cur_lo
+            cur_lo, cur_hi = lo, hi
+    total += cur_hi - cur_lo
+    return total
+
+
+def occupancy_for_room_next_five_days(
+    db: Any,
+    room_id: str,
+    anchor: datetime.date,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for i in range(5):
+        d = anchor + datetime.timedelta(days=i)
+        date_iso = d.isoformat()
+        day_bookings = fetch_bookings_for_room_and_day(db, room_id, date_iso)
+        booked = _merged_minutes_in_window(
+            day_bookings,
+            date_iso,
+            OCCUPANCY_WINDOW_START_MIN,
+            OCCUPANCY_WINDOW_END_MIN,
+        )
+        pct = round(
+            (booked / OCCUPANCY_WINDOW_SPAN_MIN) * 100.0,
+            1,
+        )
+        if pct > 100.0:
+            pct = 100.0
+        rows.append(
+            {
+                "date_iso": date_iso,
+                "booked_minutes": booked,
+                "percent": pct,
+            }
+        )
+    return rows

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content="{{ csrf_token }}" />
+    <title>{{ room.name }} — Room</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="app-header">
+        <h1>{{ room.name }}</h1>
+        <p class="status-text"><a href="{{ url_for('index') }}">← Back to home</a></p>
+      </header>
+
+      <section class="panel">
+        <h2>All bookings (this room)</h2>
+        <p class="status-text muted">
+          Every user’s bookings, ordered by date and start time.
+        </p>
+        {% if all_bookings %}
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Booked by (user id)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for b in all_bookings %}
+            <tr>
+              <td>{{ b.dateIso }}</td>
+              <td>{{ b.startTime }}–{{ b.endTime }}</td>
+              <td class="mono">{{ b.userUid }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="status-text">No bookings for this room yet.</p>
+        {% endif %}
+      </section>
+
+      <section class="panel">
+        <h2>Occupancy (next 5 days)</h2>
+        <p class="status-text muted">
+          Share of 09:00–18:00 (9 hours) booked each day. First day is
+          <strong>{{ occupancy_anchor_label }}</strong> (server local date), then the following four
+          days.
+        </p>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Minutes booked (09:00–18:00)</th>
+              <th>Occupancy</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in occupancy %}
+            <tr>
+              <td>{{ row.date_iso }}</td>
+              <td>{{ row.booked_minutes }} / 540</td>
+              <td>{{ row.percent }}%</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </main>
+
+    <script type="module" src="{{ url_for('static', filename='auth-bridge.js') }}"></script>
+  </body>
+</html>

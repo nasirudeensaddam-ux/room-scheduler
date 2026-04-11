@@ -140,6 +140,17 @@ def index():
     if user_uid and room_filter:
         my_room_bookings = bl.list_user_bookings_for_room(db, user_uid, room_filter)
 
+    day_filter = request.args.get("day", "").strip()
+    day_bookings = None
+    if day_filter:
+        try:
+            datetime.date.fromisoformat(day_filter)
+        except ValueError:
+            day_filter = ""
+        if day_filter:
+            raw = bl.list_bookings_on_date_all_rooms(db, day_filter)
+            day_bookings = bl.sort_day_bookings_for_display(raw, rooms)
+
     today_iso = datetime.date.today().isoformat()
     return render_template(
         "index.html",
@@ -149,7 +160,28 @@ def index():
         my_bookings=my_bookings,
         my_room_bookings=my_room_bookings,
         room_filter=room_filter,
+        day_filter=day_filter,
+        day_bookings=day_bookings,
         today_iso=today_iso,
+    )
+
+
+@app.get("/room/<room_id>")
+def room_detail(room_id: str):
+    """Group 4: all bookings for a room + 5-day occupancy (09:00–18:00)."""
+    db = get_db()
+    room = bl.get_room(db, room_id)
+    if not room:
+        abort(404)
+    all_bookings = bl.list_all_bookings_for_room(db, room_id)
+    anchor = datetime.date.today()
+    occupancy = bl.occupancy_for_room_next_five_days(db, room_id, anchor)
+    return render_template(
+        "room_detail.html",
+        room=room,
+        all_bookings=all_bookings,
+        occupancy=occupancy,
+        occupancy_anchor_label=anchor.isoformat(),
     )
 
 

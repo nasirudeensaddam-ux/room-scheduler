@@ -61,12 +61,59 @@
       {% endif %}
 
       <section class="panel">
+        <h2>Filter by day (all rooms)</h2>
+        <p class="status-text muted">
+          Shows every booking on the chosen day across all rooms (sorted by room, then time).
+        </p>
+        <form method="get" action="{{ url_for('index') }}" class="inline-form">
+          <label for="filter-day">Day</label>
+          <input
+            id="filter-day"
+            name="day"
+            type="date"
+            value="{{ day_filter }}"
+          />
+          <button type="submit">Show bookings on this day</button>
+        </form>
+        {% if day_bookings is not none %}
+        {% if day_bookings %}
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Room</th>
+              <th>Time</th>
+              <th>User id</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for b in day_bookings %}
+            <tr>
+              <td>
+                <a href="{{ url_for('room_detail', room_id=b.roomId) }}"
+                  >{{ rooms|room_name(b.roomId) }}</a
+                >
+              </td>
+              <td>{{ b.startTime }}–{{ b.endTime }}</td>
+              <td class="mono">{{ b.userUid }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="status-text muted">No bookings on that day.</p>
+        {% endif %}
+        {% endif %}
+      </section>
+
+      <section class="panel">
         <h2>Rooms</h2>
         {% if rooms %}
         <ul class="rooms-list">
           {% for room in rooms %}
           <li class="room-row">
-            <span class="room-name">{{ room.name }}</span>
+            <a class="room-link" href="{{ url_for('room_detail', room_id=room.id) }}"
+              >{{ room.name }}</a
+            >
             {% if user_uid and room.ownerUid == user_uid %}
             <form
               method="post"

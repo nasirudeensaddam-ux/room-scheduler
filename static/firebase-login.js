@@ -8,16 +8,17 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-/** Must match your named Firestore database id (e.g. A1-studentnumber). */
+
 const FIRESTORE_DATABASE_NAME = "a1-0000000";
 
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID",
+  apiKey: "AIzaSyBPcaCJaH9k5kdzYmUsHLdZ3X7UaNUyOZk",
+  authDomain: "room-scheduler-227ec.firebaseapp.com",
+  projectId: "room-scheduler-227ec",
+  storageBucket: "room-scheduler-227ec.firebasestorage.app",
+  messagingSenderId: "712107553929",
+  appId: "1:712107553929:web:07f399e382b2700bac8258",
+  measurementId: "G-H33C69HJLX"
 };
 
 const app = initializeApp(firebaseConfig);
