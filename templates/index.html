@@ -7,10 +7,10 @@
     <title>Room Scheduler</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
-  <body>
-    <main class="app">
+  <body class="page-home">
+    <main class="app app-home">
       <header class="app-header">
-        <h1>Room Scheduler</h1>
+        <h1 class="app-title">Room Scheduler</h1>
         <div class="auth-controls">
           {% if user_uid %}
           <span class="status-text">{{ user_email or user_uid }}</span>

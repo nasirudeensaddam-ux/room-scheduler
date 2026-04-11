@@ -7,67 +7,130 @@
     <title>{{ room.name }} — Room</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
-  <body>
-    <main class="app">
-      <header class="app-header">
-        <h1>{{ room.name }}</h1>
-        <p class="status-text"><a href="{{ url_for('index') }}">← Back to home</a></p>
+  <body class="page-room-detail">
+    <a href="#main-room" class="skip-link">Skip to content</a>
+    <main class="app" id="main-room">
+      <header class="room-hero panel">
+        <p class="breadcrumb">
+          <a href="{{ url_for('index') }}">Home</a>
+          <span aria-hidden="true"> / </span>
+          <span class="breadcrumb-current">{{ room.name }}</span>
+        </p>
+        <h1 class="room-hero-title">{{ room.name }}</h1>
+        <p class="status-text muted">
+          Next five days use <strong>09:00–18:00</strong> (server local dates), same window as
+          occupancy.
+        </p>
       </header>
 
-      <section class="panel">
-        <h2>All bookings (this room)</h2>
+      <section class="panel panel-highlight" aria-labelledby="earliest-free-heading">
+        <h2 id="earliest-free-heading">Earliest time you can book</h2>
         <p class="status-text muted">
-          Every user’s bookings, ordered by date and start time.
+          First free moment in the next five days within 09:00–18:00 (start of a free interval).
         </p>
-        {% if all_bookings %}
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Time</th>
-              <th>Booked by (user id)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for b in all_bookings %}
-            <tr>
-              <td>{{ b.dateIso }}</td>
-              <td>{{ b.startTime }}–{{ b.endTime }}</td>
-              <td class="mono">{{ b.userUid }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        {% if earliest_free %}
+        <p class="callout-value">
+          <span class="callout-date">{{ earliest_free.date_iso }}</span>
+          <span class="callout-time">from {{ earliest_free.time }}</span>
+        </p>
         {% else %}
-        <p class="status-text">No bookings for this room yet.</p>
+        <p class="status-text callout-empty">
+          No free time in that window for the next five days (fully booked 09:00–18:00 each day).
+        </p>
         {% endif %}
+      </section>
+
+      <section class="panel" aria-labelledby="calendar-heading">
+        <h2 id="calendar-heading">5-day calendar (30-minute slots)</h2>
+        <p class="status-text muted">
+          Each cell is a half-hour. <span class="legend-swatch legend-booked"></span> Booked
+          <span class="legend-swatch legend-free"></span> Free
+        </p>
+        <div class="calendar-scroll" role="region" aria-label="Five day booking grid">
+          <div class="calendar-grid">
+            {% for day in calendar_days %}
+            <div class="calendar-column">
+              <div class="calendar-column-head">
+                <span class="cal-weekday">{{ day.weekday }}</span>
+                <span class="cal-date">{{ day.date_iso }}</span>
+              </div>
+              <div class="calendar-slots">
+                {% for slot in day.slots %}
+                <div
+                  class="calendar-slot {% if slot.booked %}calendar-slot-booked{% else %}calendar-slot-free{% endif %}"
+                  title="{{ slot.start }}–{{ slot.end }}{% if slot.booked %} · booked{% else %} · free{% endif %}"
+                >
+                  <span class="calendar-slot-label">{{ slot.start }}</span>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
       </section>
 
       <section class="panel">
         <h2>Occupancy (next 5 days)</h2>
         <p class="status-text muted">
-          Share of 09:00–18:00 (9 hours) booked each day. First day is
-          <strong>{{ occupancy_anchor_label }}</strong> (server local date), then the following four
-          days.
+          Share of 09:00–18:00 booked. Anchor: <strong>{{ occupancy_anchor_label }}</strong>.
         </p>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Minutes booked (09:00–18:00)</th>
-              <th>Occupancy</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in occupancy %}
-            <tr>
-              <td>{{ row.date_iso }}</td>
-              <td>{{ row.booked_minutes }} / 540</td>
-              <td>{{ row.percent }}%</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Minutes / 540</th>
+                <th>Occupancy</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in occupancy %}
+              <tr>
+                <td>{{ row.date_iso }}</td>
+                <td>{{ row.booked_minutes }}</td>
+                <td>
+                  <span class="pct-bar-wrap" title="{{ row.percent }}%">
+                    <span class="pct-bar-track">
+                      <span class="pct-bar-fill" style="width: {{ row.percent }}%"></span>
+                    </span>
+                    <span class="pct-label">{{ row.percent }}%</span>
+                  </span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>All bookings (this room)</h2>
+        <p class="status-text muted">Every user’s bookings, by date and time.</p>
+        {% if all_bookings %}
+        <div class="table-wrap">
+          <table class="data-table data-table-striped">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Time</th>
+                <th>User id</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for b in all_bookings %}
+              <tr>
+                <td>{{ b.dateIso }}</td>
+                <td>{{ b.startTime }}–{{ b.endTime }}</td>
+                <td class="mono">{{ b.userUid }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="status-text">No bookings for this room yet.</p>
+        {% endif %}
       </section>
     </main>
 

@@ -168,7 +168,6 @@ def index():
 
 @app.get("/room/<room_id>")
 def room_detail(room_id: str):
-    """Group 4: all bookings for a room + 5-day occupancy (09:00–18:00)."""
     db = get_db()
     room = bl.get_room(db, room_id)
     if not room:
@@ -176,12 +175,16 @@ def room_detail(room_id: str):
     all_bookings = bl.list_all_bookings_for_room(db, room_id)
     anchor = datetime.date.today()
     occupancy = bl.occupancy_for_room_next_five_days(db, room_id, anchor)
+    earliest_free = bl.earliest_free_start_next_five_days(db, room_id, anchor)
+    calendar_days = bl.calendar_grid_next_five_days(db, room_id, anchor)
     return render_template(
         "room_detail.html",
         room=room,
         all_bookings=all_bookings,
         occupancy=occupancy,
         occupancy_anchor_label=anchor.isoformat(),
+        earliest_free=earliest_free,
+        calendar_days=calendar_days,
     )
 
 

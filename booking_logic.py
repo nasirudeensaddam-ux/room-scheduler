@@ -297,13 +297,19 @@ def list_all_bookings_for_room(db: Any, room_id: str) -> list[dict[str, Any]]:
     return items
 
 
-def _merged_minutes_in_window(
+def minutes_to_hhmm(total_minutes: int) -> str:
+    h, m = divmod(int(total_minutes), 60)
+    return f"{h:02d}:{m:02d}"
+
+
+def _merged_intervals_in_window(
     bookings: list[dict[str, Any]],
     date_iso: str,
     win_lo: int,
     win_hi: int,
-) -> int:
-    intervals: list[tuple[int, int]] = []
+) -> list[tuple[int, int]]:
+    """Booked intervals clipped to [win_lo, win_hi), merged."""
+    raw: list[tuple[int, int]] = []
     for b in bookings:
         if str(b.get("dateIso") or "") != date_iso:
             continue
@@ -314,20 +320,103 @@ def _merged_minutes_in_window(
         lo = max(s, win_lo)
         hi = min(e, win_hi)
         if hi > lo:
-            intervals.append((lo, hi))
-    if not intervals:
-        return 0
-    intervals.sort()
-    total = 0
-    cur_lo, cur_hi = intervals[0]
-    for lo, hi in intervals[1:]:
+            raw.append((lo, hi))
+    if not raw:
+        return []
+    raw.sort()
+    merged: list[tuple[int, int]] = []
+    cur_lo, cur_hi = raw[0]
+    for lo, hi in raw[1:]:
         if lo < cur_hi:
             cur_hi = max(cur_hi, hi)
         else:
-            total += cur_hi - cur_lo
+            merged.append((cur_lo, cur_hi))
             cur_lo, cur_hi = lo, hi
-    total += cur_hi - cur_lo
-    return total
+    merged.append((cur_lo, cur_hi))
+    return merged
+
+
+def _merged_minutes_in_window(
+    bookings: list[dict[str, Any]],
+    date_iso: str,
+    win_lo: int,
+    win_hi: int,
+) -> int:
+    merged = _merged_intervals_in_window(bookings, date_iso, win_lo, win_hi)
+    return sum(hi - lo for lo, hi in merged)
+
+
+def _slot_touches_merged(slot_lo: int, slot_hi: int, merged: list[tuple[int, int]]) -> bool:
+    for lo, hi in merged:
+        if slot_lo < hi and lo < slot_hi:
+            return True
+    return False
+
+
+CALENDAR_SLOT_MINUTES = 30
+CALENDAR_SLOT_COUNT = OCCUPANCY_WINDOW_SPAN_MIN // CALENDAR_SLOT_MINUTES
+
+
+def earliest_free_start_next_five_days(
+    db: Any,
+    room_id: str,
+    anchor: datetime.date,
+) -> dict[str, str] | None:
+    for i in range(5):
+        d = anchor + datetime.timedelta(days=i)
+        date_iso = d.isoformat()
+        day_bookings = fetch_bookings_for_room_and_day(db, room_id, date_iso)
+        merged = _merged_intervals_in_window(
+            day_bookings,
+            date_iso,
+            OCCUPANCY_WINDOW_START_MIN,
+            OCCUPANCY_WINDOW_END_MIN,
+        )
+        cursor = OCCUPANCY_WINDOW_START_MIN
+        for lo, hi in merged:
+            if cursor < lo:
+                return {"date_iso": date_iso, "time": minutes_to_hhmm(cursor)}
+            cursor = max(cursor, hi)
+        if cursor < OCCUPANCY_WINDOW_END_MIN:
+            return {"date_iso": date_iso, "time": minutes_to_hhmm(cursor)}
+    return None
+
+
+def calendar_grid_next_five_days(
+    db: Any,
+    room_id: str,
+    anchor: datetime.date,
+) -> list[dict[str, Any]]:
+    days_out: list[dict[str, Any]] = []
+    for i in range(5):
+        d = anchor + datetime.timedelta(days=i)
+        date_iso = d.isoformat()
+        day_bookings = fetch_bookings_for_room_and_day(db, room_id, date_iso)
+        merged = _merged_intervals_in_window(
+            day_bookings,
+            date_iso,
+            OCCUPANCY_WINDOW_START_MIN,
+            OCCUPANCY_WINDOW_END_MIN,
+        )
+        slots: list[dict[str, Any]] = []
+        for j in range(CALENDAR_SLOT_COUNT):
+            slot_lo = OCCUPANCY_WINDOW_START_MIN + j * CALENDAR_SLOT_MINUTES
+            slot_hi = slot_lo + CALENDAR_SLOT_MINUTES
+            slots.append(
+                {
+                    "start": minutes_to_hhmm(slot_lo),
+                    "end": minutes_to_hhmm(slot_hi),
+                    "booked": _slot_touches_merged(slot_lo, slot_hi, merged),
+                }
+            )
+        days_out.append(
+            {
+                "date_iso": date_iso,
+                "weekday": d.strftime("%a"),
+                "slots": slots,
+            }
+        )
+    return days_out
 
 
 def occupancy_for_room_next_five_days(
