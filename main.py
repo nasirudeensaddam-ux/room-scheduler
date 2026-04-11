@@ -31,7 +31,7 @@ _firestore_client = None
 def init_firebase() -> None:
     if firebase_admin._apps:
         return
-    path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    path = os.environ.get("service-account.json") or "./service-account.json"
     if path and os.path.isfile(path):
         cred = credentials.Certificate(path)
     else:
@@ -43,7 +43,7 @@ def get_db():
     global _firestore_client
     if _firestore_client is None:
         init_firebase()
-        db_id = os.environ.get("FIRESTORE_DATABASE_ID")
+        db_id = "a1-0000000"
         if db_id:
             _firestore_client = firestore.client(database_id=db_id)
         else:

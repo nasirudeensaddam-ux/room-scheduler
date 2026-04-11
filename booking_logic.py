@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
-from google.cloud.firestore import SERVER_TIMESTAMP
+from google.cloud.firestore import SERVER_TIMESTAMP, transactional
 
 MAX_ROOM_NAME_LENGTH = 120
 
@@ -44,6 +44,47 @@ def fetch_bookings_for_room_and_day(
     return [{"id": s.id, **s.to_dict()} for s in q.stream()]
 
 
+def fetch_bookings_for_room_and_day_tx(
+    transaction: Any, db: Any, room_id: str, date_iso: str
+) -> list[dict[str, Any]]:
+    q = (
+        db.collection("bookings")
+        .where("roomId", "==", room_id)
+        .where("dateIso", "==", date_iso)
+    )
+    return [
+        {"id": d.id, **(d.to_dict() or {})} for d in q.get(transaction=transaction)
+    ]
+
+
+def _parse_booking_interval_minutes(b: dict[str, Any]) -> tuple[int, int] | None:
+    b_start = parse_time_to_minutes(str(b.get("startTime") or ""))
+    b_end = parse_time_to_minutes(str(b.get("endTime") or ""))
+    if b_start is None or b_end is None or b_end <= b_start:
+        return None
+    return b_start, b_end
+
+
+def assert_no_interval_clash_with_existing(
+    existing_bookings: list[dict[str, Any]],
+    start_m: int,
+    end_m: int,
+    exclude_booking_id: str | None,
+) -> None:
+    for b in existing_bookings:
+        bid = str(b.get("id") or "")
+        if exclude_booking_id and bid == exclude_booking_id:
+            continue
+        parsed = _parse_booking_interval_minutes(b)
+        if parsed is None:
+            raise ValueError(
+                "Cannot verify overlap: an existing booking has invalid stored times."
+            )
+        b_start, b_end = parsed
+        if intervals_overlap_half_open(start_m, end_m, b_start, b_end):
+            raise ValueError("This time overlaps an existing booking for that room.")
+
+
 def assert_no_booking_clash(
     db: Any,
     room_id: str,
@@ -59,15 +100,10 @@ def assert_no_booking_clash(
     if end_m <= start_m:
         raise ValueError("End time must be after start time.")
 
-    for b in fetch_bookings_for_room_and_day(db, room_id, date_iso):
-        if exclude_booking_id and b.get("id") == exclude_booking_id:
-            continue
-        b_start = parse_time_to_minutes(str(b.get("startTime") or ""))
-        b_end = parse_time_to_minutes(str(b.get("endTime") or ""))
-        if b_start is None or b_end is None:
-            continue
-        if intervals_overlap_half_open(start_m, end_m, b_start, b_end):
-            raise ValueError("This time overlaps an existing booking for that room.")
+    existing = fetch_bookings_for_room_and_day(db, room_id, date_iso)
+    assert_no_interval_clash_with_existing(
+        existing, start_m, end_m, exclude_booking_id
+    )
 
 
 def get_or_create_day(db: Any, room_id: str, date_iso: str) -> str:
@@ -97,38 +133,48 @@ def room_has_any_booking(db: Any, room_id: str) -> bool:
 
 
 def normalize_room_name(name: str) -> str:
-    return name.strip().lower()
+    return " ".join(name.strip().split()).casefold()
 
 
-def room_name_exists(db: Any, normalized: str) -> bool:
-    q = (
-        db.collection("rooms")
-        .where("normalizedName", "==", normalized)
-        .limit(1)
-    )
-    return any(True for _ in q.stream())
+@transactional
+def _transaction_create_room(
+    transaction: Any,
+    db: Any,
+    normalized_keys: frozenset[str],
+    payload: dict[str, Any],
+) -> None:
+    for key in normalized_keys:
+        snaps = (
+            db.collection("rooms")
+            .where("normalizedName", "==", key)
+            .limit(1)
+            .get(transaction=transaction)
+        )
+        if snaps:
+            raise ValueError("A room with this name already exists.")
+    ref = db.collection("rooms").document()
+    transaction.set(ref, payload)
 
 
 def create_room(db: Any, user_uid: str, name: str) -> None:
-    trimmed = name.strip()
-    if not trimmed:
+    raw_stripped = name.strip()
+    if not raw_stripped:
         raise ValueError("Room name is required.")
+    trimmed = " ".join(raw_stripped.split())
     if len(trimmed) > MAX_ROOM_NAME_LENGTH:
         raise ValueError(
             f"Room name must be at most {MAX_ROOM_NAME_LENGTH} characters."
         )
     normalized = normalize_room_name(trimmed)
-    if room_name_exists(db, normalized):
-        raise ValueError("A room with this name already exists.")
-
-    db.collection("rooms").document().set(
-        {
-            "name": trimmed,
-            "normalizedName": normalized,
-            "ownerUid": user_uid,
-            "createdAt": SERVER_TIMESTAMP,
-        }
-    )
+    legacy_key = raw_stripped.lower()
+    normalized_keys = frozenset({normalized, legacy_key}) if legacy_key != normalized else frozenset({normalized})
+    payload = {
+        "name": trimmed,
+        "normalizedName": normalized,
+        "ownerUid": user_uid,
+        "createdAt": SERVER_TIMESTAMP,
+    }
+    _transaction_create_room(db.transaction(), db, normalized_keys, payload)
 
 
 def list_rooms_sorted(db: Any) -> list[dict[str, Any]]:
@@ -176,12 +222,30 @@ def get_booking(db: Any, booking_id: str) -> dict[str, Any] | None:
     return {"id": snap.id, **(snap.to_dict() or {})}
 
 
-def create_booking(
-    db: Any, user_uid: str, room_id: str, date_iso: str, start: str, end: str
+@transactional
+def _transaction_create_booking(
+    transaction: Any,
+    db: Any,
+    user_uid: str,
+    room_id: str,
+    date_iso: str,
+    start: str,
+    end: str,
+    day_id: str,
 ) -> None:
-    assert_no_booking_clash(db, room_id, date_iso, start, end, None)
-    day_id = get_or_create_day(db, room_id, date_iso)
-    db.collection("bookings").document().set(
+    start_m = parse_time_to_minutes(start)
+    end_m = parse_time_to_minutes(end)
+    if start_m is None or end_m is None:
+        raise ValueError("Start and end times must be valid.")
+    if end_m <= start_m:
+        raise ValueError("End time must be after start time.")
+    existing = fetch_bookings_for_room_and_day_tx(
+        transaction, db, room_id, date_iso
+    )
+    assert_no_interval_clash_with_existing(existing, start_m, end_m, None)
+    ref = db.collection("bookings").document()
+    transaction.set(
+        ref,
         {
             "roomId": room_id,
             "dayId": day_id,
@@ -190,7 +254,67 @@ def create_booking(
             "endTime": end,
             "userUid": user_uid,
             "createdAt": SERVER_TIMESTAMP,
-        }
+        },
+    )
+
+
+def create_booking(
+    db: Any, user_uid: str, room_id: str, date_iso: str, start: str, end: str
+) -> None:
+    day_id = get_or_create_day(db, room_id, date_iso)
+    _transaction_create_booking(
+        db.transaction(),
+        db,
+        user_uid,
+        room_id,
+        date_iso,
+        start,
+        end,
+        day_id,
+    )
+
+
+@transactional
+def _transaction_update_booking(
+    transaction: Any,
+    db: Any,
+    booking_id: str,
+    user_uid: str,
+    room_id: str,
+    date_iso: str,
+    start: str,
+    end: str,
+    day_id: str,
+) -> None:
+    ref = db.collection("bookings").document(booking_id)
+    snap = ref.get(transaction=transaction)
+    if not snap.exists:
+        raise ValueError("Booking not found.")
+    data = snap.to_dict() or {}
+    if data.get("userUid") != user_uid:
+        raise PermissionError("You can only edit your own bookings.")
+
+    start_m = parse_time_to_minutes(start)
+    end_m = parse_time_to_minutes(end)
+    if start_m is None or end_m is None:
+        raise ValueError("Start and end times must be valid.")
+    if end_m <= start_m:
+        raise ValueError("End time must be after start time.")
+    existing = fetch_bookings_for_room_and_day_tx(
+        transaction, db, room_id, date_iso
+    )
+    assert_no_interval_clash_with_existing(
+        existing, start_m, end_m, booking_id
+    )
+    transaction.update(
+        ref,
+        {
+            "roomId": room_id,
+            "dayId": day_id,
+            "dateIso": date_iso,
+            "startTime": start,
+            "endTime": end,
+        },
     )
 
 
@@ -203,23 +327,17 @@ def update_booking(
     start: str,
     end: str,
 ) -> None:
-    snap = db.collection("bookings").document(booking_id).get()
-    if not snap.exists:
-        raise ValueError("Booking not found.")
-    data = snap.to_dict() or {}
-    if data.get("userUid") != user_uid:
-        raise PermissionError("You can only edit your own bookings.")
-
-    assert_no_booking_clash(db, room_id, date_iso, start, end, booking_id)
     day_id = get_or_create_day(db, room_id, date_iso)
-    snap.reference.update(
-        {
-            "roomId": room_id,
-            "dayId": day_id,
-            "dateIso": date_iso,
-            "startTime": start,
-            "endTime": end,
-        }
+    _transaction_update_booking(
+        db.transaction(),
+        db,
+        booking_id,
+        user_uid,
+        room_id,
+        date_iso,
+        start,
+        end,
+        day_id,
     )
 
 
